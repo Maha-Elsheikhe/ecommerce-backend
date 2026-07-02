@@ -7,17 +7,17 @@ const addToCart = async (req, res) => {
 
     const existingItem = await db.query(
       `SELECT * FROM cart
-             WHERE user_id = $1
-             AND product_id = $2`,
+            WHERE user_id = $1
+            AND product_id = $2`,
       [userId, product_id],
     );
 
     if (existingItem.rows.length > 0) {
       const result = await db.query(
         `UPDATE cart
-                 SET quantity = quantity + $1
-                 WHERE user_id = $2
-                 AND product_id = $3
+                SET quantity = quantity + $1
+                WHERE user_id = $2
+                AND product_id = $3
                  RETURNING *`,
         [quantity, userId, product_id],
       );
