@@ -235,6 +235,9 @@ const resendVerification = async (req, res) => {
 
     const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
+    console.log("EMAIL:", process.env.EMAIL);
+    console.log("EMAIL_PASSWORD exists:", !!process.env.EMAIL_PASSWORD);
+
     transporter.verify((error, success) => {
       if (error) {
         console.error(error);
