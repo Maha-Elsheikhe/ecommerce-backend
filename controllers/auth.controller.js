@@ -235,17 +235,6 @@ const resendVerification = async (req, res) => {
 
     const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
-    console.log("EMAIL:", process.env.EMAIL);
-    console.log("EMAIL_PASSWORD exists:", !!process.env.EMAIL_PASSWORD);
-
-    transporter.verify((error, success) => {
-      if (error) {
-        console.error(error);
-      } else {
-        console.log("SMTP Server is ready");
-      }
-    });
-
     await transporter
       .sendMail({
         from: process.env.EMAIL,
@@ -262,6 +251,17 @@ const resendVerification = async (req, res) => {
       })
       .then((info) => console.log("Email sent:", info.response))
       .catch((err) => console.log("EMAIL ERROR:", err));
+
+    console.log("EMAIL:", process.env.EMAIL);
+    console.log("EMAIL_PASSWORD exists:", !!process.env.EMAIL_PASSWORD);
+
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error(error);
+      } else {
+        console.log("SMTP Server is ready");
+      }
+    });
 
     res.json({
       message: "Verification email sent successfully.",
