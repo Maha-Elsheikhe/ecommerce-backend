@@ -65,7 +65,7 @@ const register = async (req, res) => {
       console.log("EMAIL SENT SUCCESS");
     } catch (e) {
       console.log("EMAIL ERROR FULL:", e);
-      throw email;
+      return res.status(500).json({ message: "Email sending failed" });
     }
 
     console.log("email sent ok");
@@ -234,6 +234,14 @@ const resendVerification = async (req, res) => {
     );
 
     const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error(error);
+      } else {
+        console.log("SMTP Server is ready");
+      }
+    });
 
     await transporter
       .sendMail({
