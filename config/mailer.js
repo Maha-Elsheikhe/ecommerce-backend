@@ -15,20 +15,20 @@
 const nodemailer = require("nodemailer");
 const dns = require("dns");
 
-// Keep the IPv4 fix
+// 1. Force Node to use IPv4. This stops the "ENETUNREACH" IPv6 error on Render.
 dns.setDefaultResultOrder("ipv4first");
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  // Notice: service: "gmail" is completely removed so it doesn't override our settings
   host: "smtp.gmail.com",
-  port: 587, // Change this to 587
-  secure: false, // Must be false when using 587 (it upgrades to secure automatically)
-  requireTLS: true, // Force TLS connection
+  port: 587,
+  secure: false, // MUST be false for port 587 (it upgrades to secure via STARTTLS)
+  requireTLS: true, // Forces the secure connection Gmail requires
   auth: {
     user: process.env.EMAIL,
-    pass: process.env.EMAIL_PASSWORD,
+    pass: process.env.EMAIL_PASSWORD, // Must be your 16-character App Password
   },
-  // Add these timeout settings (gives Render 20 seconds to connect)
+  // 2. Gives Render's free tier enough time to make the connection without timing out
   connectionTimeout: 20000,
   greetingTimeout: 20000,
   socketTimeout: 20000,
