@@ -2,12 +2,14 @@ const db = require("../db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const nodemailer = require("nodemailer");
-const transporter = require("../config/mailer");
+// const nodemailer = require("nodemailer");
+// const transporter = require("../config/mailer");
+const resend = require("../config/mailer");
 
 const register = async (req, res) => {
   try {
-    const { fname, lname, email, password } = req.body;
+    const { fname, lname, password } = req.body;
+    const email = req.body.email?.trim().toLowerCase();
 
     if (!fname || !lname || !email || !password) {
       return res.status(400).json({
@@ -52,20 +54,32 @@ const register = async (req, res) => {
     // email sender
 
     try {
-      await transporter.sendMail({
-        from: process.env.EMAIL,
-        to: email,
+      // await transporter.sendMail({
+      //   from: process.env.EMAIL,
+      //   to: email,
+      //   subject: "Verify your email",
+      //   html: `
+      //   <h2>Welcome ${fname}!</h2>
+      //   <p>Please verify your email:</p>
+      //   <a href="${verificationLink}">Verify Email</a>
+      // `,
+      // });
+      // console.log("EMAIL SENT SUCCESS");
+      await resend.emails.send({
+        from: "Acme <onboarding@resend.dev>",
+        to: [email],
         subject: "Verify your email",
         html: `
-        <h2>Welcome ${fname}!</h2>
-        <p>Please verify your email:</p>
-        <a href="${verificationLink}">Verify Email</a>
-      `,
+          <h2>Welcome ${fname}!</h2>
+          <p>Please verify your email by clicking the link below:</p>
+          <a href="${verificationLink}">Verify Email</a>
+        `,
       });
-      console.log("EMAIL SENT SUCCESS");
-    } catch (e) {
-      console.log("EMAIL ERROR FULL:", e);
-      return res.status(500).json({ message: "Email sending failed" });
+
+      console.log("Email sent successfully!");
+    } catch (error) {
+      console.error("Failed to send email:", error);
+      throw error;
     }
 
     console.log("email sent ok");
@@ -84,7 +98,8 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const password = req.body.password;
+    const email = req.body.email?.trim().toLowerCase();
 
     if (!email || !password) {
       return res.status(400).json({
@@ -198,7 +213,7 @@ const verifyEmail = async (req, res) => {
 
 const resendVerification = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = req.body.email?.trim().toLowerCase();
 
     if (!email) {
       return res.status(400).json({
@@ -235,47 +250,34 @@ const resendVerification = async (req, res) => {
 
     const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
-    await transporter
-      .sendMail({
-        from: process.env.EMAIL,
-        to: user.email,
-        subject: "Verify your email",
-        html: `
-        <h2>Hello ${user.fname}</h2>
-        <p>Click the button below to verify your email.</p>
-
-        <a href="${verificationLink}">
-          Verify Email
-        </a>
-      `,
-      })
-      .then((info) => console.log("Email sent:", info.response))
-      .catch((err) => console.log("EMAIL ERROR:", err));
-
-    console.log("EMAIL:", process.env.EMAIL);
-    console.log("EMAIL_PASSWORD exists:", !!process.env.EMAIL_PASSWORD);
-
-    transporter.verify((error, success) => {
-      if (error) {
-        console.error(error);
-      } else {
-        console.log("SMTP Server is ready");
-      }
+    await resend.emails.send({
+      from: "Acme <onboarding@resend.dev>",
+      to: [email],
+      subject: "Verify your email",
+      html: `
+          <h2>Verify your email</h2>
+          <p>Please click the link below to verify your account:</p>
+          <a href="${verificationLink}">Verify Email</a>
+        `,
     });
+
+    console.log("Email sent successfully!");
 
     res.json({
       message: "Verification email sent successfully.",
     });
-  } catch (err) {
-    res.status(500).json({
-      error: err.message,
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      message: "Failed to send email",
     });
   }
 };
 
 const requestResetPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = req.body.email?.trim().toLowerCase();
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
@@ -304,21 +306,28 @@ const requestResetPassword = async (req, res) => {
 
     const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
-    await transporter.sendMail({
-      from: process.env.EMAIL,
-      to: email,
-      subject: "Reset Password",
+    await resend.emails.send({
+      from: "Acme <onboarding@resend.dev>",
+      to: [email],
+      subject: "Reset your password",
       html: `
-        <h2>Hello ${user.fname}</h2>
-        <p>Click below to reset your password:</p>
-        <a href="${resetLink}">Reset Password</a>
-      `,
+    <h2>Password Reset</h2>
+    <p>Click the link below to reset your password:</p>
+    <a href="${resetLink}">Reset Password</a>
+  `,
     });
 
-    res.json({ message: "Reset email sent" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    console.log("Email sent successfully!");
+
+    res.json({
+      message: "Reset email sent",
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      message: "Failed to send email",
+    });
   }
 };
 
@@ -333,7 +342,8 @@ const resetPassword = async (req, res) => {
     const result = await db.query(
       `SELECT id
         FROM users
-        WHERE reset_password_token = $1`,
+        WHERE reset_password_token = $1
+        AND reset_password_expires > NOW()`,
       [token],
     );
 
@@ -347,8 +357,10 @@ const resetPassword = async (req, res) => {
 
     await db.query(
       `UPDATE users
-        SET password_hash = $1,
-        reset_password_token = NULL
+        SET
+        password_hash = $1,
+        reset_password_token = NULL,
+        reset_password_expires = NULL
         WHERE id = $2`,
       [hashedPassword, user.id],
     );
