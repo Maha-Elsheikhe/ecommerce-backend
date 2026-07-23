@@ -22,14 +22,7 @@ router.get("/:id", getProduct);
 router.get("/", getProducts);
 
 // ADD product
-router.post(
-  "/",
-  authenticate,
-  isAdmin,
-  upload.single("image"),
-  validateProduct,
-  addProduct,
-);
+router.post("/", authenticate, isAdmin, upload.single("image"), addProduct);
 
 // DELETE product
 router.delete("/:id", authenticate, isAdmin, deleteProduct);
@@ -40,7 +33,6 @@ router.put(
   authenticate,
   isAdmin,
   upload.single("image"),
-  validateProduct,
   updateProduct,
 );
 
