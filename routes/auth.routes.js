@@ -8,10 +8,11 @@ const {
   verifyEmail,
   resendVerification,
   requestResetPassword,
-  resetPassword
+  resetPassword,
 } = require("../controllers/auth.controller");
+const { validateRegister } = require("../middlewares/validateRegister.js");
 
-router.post("/register", register);
+router.post("/register", validateRegister, register);
 router.post("/login", login);
 router.get("/verify-email", verifyEmail);
 router.post("/resend-verification", resendVerification);

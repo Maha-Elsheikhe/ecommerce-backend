@@ -11,6 +11,9 @@ const {
   deleteProduct,
   updateProduct,
 } = require("../controllers/products.controller");
+const { validateProduct } = require("../middlewares/validateProduct");
+
+router.post("/products", validateProduct, addProduct);
 
 // GET single product
 router.get("/:id", getProduct);
@@ -19,7 +22,14 @@ router.get("/:id", getProduct);
 router.get("/", getProducts);
 
 // ADD product
-router.post("/", authenticate, isAdmin, upload.single("image"), addProduct);
+router.post(
+  "/",
+  authenticate,
+  isAdmin,
+  upload.single("image"),
+  validateProduct,
+  addProduct,
+);
 
 // DELETE product
 router.delete("/:id", authenticate, isAdmin, deleteProduct);
@@ -30,6 +40,7 @@ router.put(
   authenticate,
   isAdmin,
   upload.single("image"),
+  validateProduct,
   updateProduct,
 );
 
