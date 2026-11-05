@@ -26,7 +26,7 @@ const getAnalytics = async (req, res) => {
     );
 
     const completedResult = await db.query(
-      "SELECT COUNT(*) FROM orders WHERE status = 'completed'",
+      "SELECT COUNT(*) FROM orders WHERE status = 'delivered'",
     );
 
     const cancelledResult = await db.query(

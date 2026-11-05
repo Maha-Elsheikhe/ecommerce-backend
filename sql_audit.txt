@@ -1,0 +1,61 @@
+controllers/analytics.controller.js:6:    const usersResult = await db.query("SELECT COUNT(*) FROM users");
+controllers/analytics.controller.js:10:    const productsResult = await db.query("SELECT COUNT(*) FROM products");
+controllers/analytics.controller.js:14:    const ordersResult = await db.query("SELECT COUNT(*) FROM orders");
+controllers/analytics.controller.js:19:      "SELECT COALESCE(SUM(total_price), 0) AS total FROM orders",
+controllers/analytics.controller.js:25:      "SELECT COUNT(*) FROM orders WHERE status = 'pending'",
+controllers/analytics.controller.js:29:      "SELECT COUNT(*) FROM orders WHERE status = 'completed'",
+controllers/analytics.controller.js:33:      "SELECT COUNT(*) FROM orders WHERE status = 'cancelled'",
+controllers/auth.controller.js:22:      "SELECT id FROM users WHERE email = $1",
+controllers/auth.controller.js:39:      `INSERT INTO users
+controllers/auth.controller.js:110:    const result = await db.query("SELECT * FROM users WHERE email = $1", [
+controllers/auth.controller.js:178:      `SELECT id, is_verified FROM users WHERE verification_token = $1`,
+controllers/auth.controller.js:197:      `UPDATE users
+controllers/auth.controller.js:224:    const result = await db.query("SELECT * FROM users WHERE email = $1", [
+controllers/auth.controller.js:245:      `UPDATE users
+controllers/auth.controller.js:287:      "SELECT id, fname FROM users WHERE email = $1",
+controllers/auth.controller.js:300:      `UPDATE users
+controllers/auth.controller.js:343:      `SELECT id
+controllers/auth.controller.js:359:      `UPDATE users
+controllers/cart.controller.js:9:      `SELECT * FROM cart
+controllers/cart.controller.js:17:        `UPDATE cart
+controllers/cart.controller.js:29:      `INSERT INTO cart
+controllers/cart.controller.js:62:            JOIN products p
+controllers/cart.controller.js:86:      `UPDATE cart
+controllers/cart.controller.js:108:      `DELETE FROM cart
+controllers/categories.controller.js:5:    const result = await db.query("SELECT * FROM categories ORDER BY name");
+controllers/coupons.controller.js:9:      INSERT INTO coupons
+controllers/coupons.controller.js:33:      SELECT *
+controllers/coupons.controller.js:53:      SELECT *
+controllers/coupons.controller.js:93:      DELETE FROM coupons
+controllers/orders.controller.js:21:            LEFT JOIN products p
+controllers/orders.controller.js:58:    SELECT *
+controllers/orders.controller.js:79:            INSERT INTO orders
+controllers/orders.controller.js:96:                INSERT INTO order_items
+controllers/orders.controller.js:111:                UPDATE products
+controllers/orders.controller.js:122:            DELETE FROM cart
+controllers/orders.controller.js:206:        JOIN users u ON u.id = o.user_id
+controllers/orders.controller.js:237:      JOIN products p ON p.id = oi.product_id
+controllers/orders.controller.js:281:      SELECT *
+controllers/orders.controller.js:312:      UPDATE orders
+controllers/products.controller.js:12:    const result = await db.query("SELECT * FROM products WHERE id = $1", [id]);
+controllers/products.controller.js:44:      `SELECT * FROM products ${where} ORDER BY id DESC`,
+controllers/products.controller.js:65://       `INSERT INTO products (name, description, price, stock, image_url)
+controllers/products.controller.js:95:            `INSERT INTO products (name, description, price, stock, image_url, cloudinary_id, category_id)
+controllers/products.controller.js:109:        `INSERT INTO products (name, description, price, stock, image_url, category_id)
+controllers/products.controller.js:130:      "SELECT * FROM products WHERE id = $1",
+controllers/products.controller.js:146:    await db.query("DELETE FROM products WHERE id = $1", [id]);
+controllers/products.controller.js:154:// UPDATE product
+controllers/products.controller.js:161://       `UPDATE products
+controllers/products.controller.js:186:        "SELECT cloudinary_id FROM products WHERE id = $1",
+controllers/products.controller.js:208:            `UPDATE products
+controllers/products.controller.js:231:        `UPDATE products
+controllers/reviews.controller.js:3:// ➕ add or update review
+controllers/reviews.controller.js:11:      `INSERT INTO reviews (user_id, product_id, rating, comment)
+controllers/reviews.controller.js:14:        DO UPDATE SET rating = EXCLUDED.rating,
+controllers/reviews.controller.js:32:      `SELECT r.*, u.fname, u.lname
+controllers/reviews.controller.js:34:       JOIN users u ON u.id = r.user_id
+controllers/reviews.controller.js:53:      `DELETE FROM reviews
+controllers/wishlist.controller.js:10:      `INSERT INTO wishlist (user_id, product_id)
+controllers/wishlist.controller.js:30:      `SELECT w.id, p.*
+controllers/wishlist.controller.js:32:       JOIN products p ON p.id = w.product_id
+controllers/wishlist.controller.js:50:      `DELETE FROM wishlist
