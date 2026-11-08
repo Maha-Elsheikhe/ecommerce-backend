@@ -5,12 +5,33 @@ const addToCart = async (req, res) => {
     const userId = req.user.id;
     const { product_id, quantity } = req.body;
 
+    if (!Number.isInteger(Number(product_id)) || Number(product_id) <= 0) {
+      return res.status(400).json({ message: "Valid product_id is required" });
+    }
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return res.status(400).json({ message: "Quantity must be a positive integer" });
+    }
+
+    const productResult = await db.query(
+      "SELECT stock FROM products WHERE id = $1",
+      [product_id],
+    );
+    if (productResult.rows.length === 0) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+    const stock = productResult.rows[0].stock;
+
     const existingItem = await db.query(
       `SELECT * FROM cart
             WHERE user_id = $1
             AND product_id = $2`,
       [userId, product_id],
     );
+
+    const currentQty = existingItem.rows[0]?.quantity ?? 0;
+    if (currentQty + quantity > stock) {
+      return res.status(400).json({ message: "Not enough stock available" });
+    }
 
     if (existingItem.rows.length > 0) {
       const result = await db.query(
@@ -82,6 +103,28 @@ const updateCartItem = async (req, res) => {
     const { id } = req.params;
     const { quantity } = req.body;
 
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return res.status(400).json({ message: "Quantity must be a positive integer" });
+    }
+
+    if (!Number.isInteger(Number(id)) || Number(id) <= 0) {
+      return res.status(400).json({ message: "Valid cart item id is required" });
+    }
+
+    const itemResult = await db.query(
+      `SELECT c.product_id, p.stock
+             FROM cart c
+             JOIN products p ON p.id = c.product_id
+             WHERE c.id = $1 AND c.user_id = $2`,
+      [id, userId],
+    );
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ message: "Cart item not found" });
+    }
+    if (quantity > itemResult.rows[0].stock) {
+      return res.status(400).json({ message: "Not enough stock available" });
+    }
+
     const result = await db.query(
       `UPDATE cart
              SET quantity = $1
@@ -90,6 +133,10 @@ const updateCartItem = async (req, res) => {
              RETURNING *`,
       [quantity, id, userId],
     );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Cart item not found" });
+    }
 
     res.json(result.rows[0]);
   } catch (err) {

@@ -15,6 +15,7 @@ CREATE TABLE users (
         CHECK (role IN ('admin', 'user')),
     is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     verification_token TEXT,
+    verification_token_expires TIMESTAMP,
     reset_password_token TEXT,
     reset_password_expires TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()

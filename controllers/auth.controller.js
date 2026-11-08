@@ -5,6 +5,21 @@ const crypto = require("crypto");
 // const nodemailer = require("nodemailer");
 // const transporter = require("../config/mailer");
 const resend = require("../config/mailer");
+const { getPasswordError } = require("../middlewares/validateRegister");
+
+// Same response for new and already-registered emails to prevent account enumeration.
+const REGISTER_OK_RESPONSE = {
+  message:
+    "Registration successful. Please check your email to verify your account.",
+  verificationEmailSent: true,
+};
+const RESEND_OK_RESPONSE = {
+  message:
+    "If an unverified account exists for this email, a verification email has been sent.",
+};
+const RESET_OK_RESPONSE = {
+  message: "If an account exists for this email, a reset email has been sent.",
+};
 
 const register = async (req, res) => {
   try {
@@ -24,21 +39,19 @@ const register = async (req, res) => {
     );
 
     if (existingUser.rows.length > 0) {
-      return res.status(400).json({
-        message: "Email already exists",
-      });
+      return res.status(201).json(REGISTER_OK_RESPONSE);
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // generate token
+    // Verification tokens are single use and expire after 24 hours.
     const verificationToken = crypto.randomBytes(32).toString("hex");
 
     // insert user
     const result = await db.query(
       `INSERT INTO users
-        (fname, lname, email, password_hash, verification_token)
-        VALUES ($1,$2,$3,$4,$5)
+        (fname, lname, email, password_hash, verification_token, verification_token_expires)
+        VALUES ($1,$2,$3,$4,$5,NOW() + INTERVAL '24 hours')
         RETURNING id,fname,lname,email,role`,
       [fname, lname, email, passwordHash, verificationToken],
     );
@@ -48,11 +61,7 @@ const register = async (req, res) => {
     // frontend link (recommended)
     const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
-    console.log("Sending email to:", email);
-    console.log("FROM:", process.env.EMAIL);
-
-    // email sender
-
+    let verificationEmailSent = false;
     try {
       // await transporter.sendMail({
       //   from: process.env.EMAIL,
@@ -65,7 +74,7 @@ const register = async (req, res) => {
       // `,
       // });
       // console.log("EMAIL SENT SUCCESS");
-      await resend.emails.send({
+      const emailResult = await resend.emails.send({
         from: "Acme <onboarding@resend.dev>",
         to: [email],
         subject: "Verify your email",
@@ -75,20 +84,26 @@ const register = async (req, res) => {
           <a href="${verificationLink}">Verify Email</a>
         `,
       });
-
-      console.log("Email sent successfully!");
+      if (emailResult?.error) {
+        throw new Error("Email provider rejected the verification email");
+      }
+      verificationEmailSent = true;
     } catch (error) {
-      console.error("Failed to send email:", error);
-      throw error;
+      // Keep the pending account and token so the user can request another email.
+      console.error("Failed to send verification email:", error.message);
     }
 
-    console.log("email sent ok");
-
     res.status(201).json({
-      message:
-        "Registration successful. Please check your email to verify your account.",
+      message: verificationEmailSent
+        ? "Registration successful. Please check your email to verify your account."
+        : "Account created. Verification email could not be sent; please request another email.",
+      verificationEmailSent,
     });
   } catch (err) {
+    if (err.code === "23505") {
+      // Concurrent registration with the same email.
+      return res.status(201).json(REGISTER_OK_RESPONSE);
+    }
     console.error(err);
     res.status(500).json({
       message: "Internal server error",
@@ -136,6 +151,11 @@ const login = async (req, res) => {
       });
     }
 
+    if (!process.env.JWT_SECRET) {
+      console.error("JWT_SECRET is not configured");
+      return res.status(500).json({ message: "Authentication is not configured" });
+    }
+
     const token = jwt.sign(
       {
         id: user.id,
@@ -158,7 +178,7 @@ const login = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({
-      error: err.message,
+      message: "Internal server error",
     });
   }
 };
@@ -175,31 +195,22 @@ const verifyEmail = async (req, res) => {
     }
 
     const result = await db.query(
-      `SELECT id, is_verified FROM users WHERE verification_token = $1`,
+      `UPDATE users
+        SET is_verified = true,
+          verification_token = NULL,
+          verification_token_expires = NULL
+        WHERE verification_token = $1
+          AND verification_token_expires > NOW()
+          AND is_verified = false
+        RETURNING id`,
       [token],
     );
 
     if (result.rows.length === 0) {
       return res.status(400).json({
-        message: "Invalid or expired verification token",
+        message: "Invalid, expired, or already used verification token",
       });
     }
-
-    const user = result.rows[0];
-
-    if (user.is_verified) {
-      return res.json({
-        message: "Email already verified.",
-      });
-    }
-
-    await db.query(
-      `UPDATE users
-        SET is_verified = true,
-          verification_token = NULL
-        WHERE id = $1`,
-      [result.rows[0].id],
-    );
 
     res.json({
       message: "Email verified successfully",
@@ -225,47 +236,44 @@ const resendVerification = async (req, res) => {
       email,
     ]);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+    if (result.rows.length === 0 || result.rows[0].is_verified) {
+      return res.json(RESEND_OK_RESPONSE);
     }
 
     const user = result.rows[0];
-
-    if (user.is_verified) {
-      return res.status(400).json({
-        message: "Email is already verified.",
-      });
-    }
 
     const verificationToken = crypto.randomBytes(32).toString("hex");
 
     await db.query(
       `UPDATE users
-        SET verification_token = $1
+        SET verification_token = $1,
+          verification_token_expires = NOW() + INTERVAL '24 hours'
         WHERE id = $2`,
       [verificationToken, user.id],
     );
 
     const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
-    await resend.emails.send({
-      from: "Acme <onboarding@resend.dev>",
-      to: [email],
-      subject: "Verify your email",
-      html: `
+    try {
+      const emailResult = await resend.emails.send({
+        from: "Acme <onboarding@resend.dev>",
+        to: [email],
+        subject: "Verify your email",
+        html: `
           <h2>Verify your email</h2>
           <p>Please click the link below to verify your account:</p>
           <a href="${verificationLink}">Verify Email</a>
         `,
-    });
+      });
+      if (emailResult?.error) {
+        throw new Error("Email provider rejected the verification email");
+      }
+    } catch (error) {
+      // Do not reveal (via a different status) that the account exists.
+      console.error("Failed to resend verification email:", error.message);
+    }
 
-    console.log("Email sent successfully!");
-
-    res.json({
-      message: "Verification email sent successfully.",
-    });
+    res.json(RESEND_OK_RESPONSE);
   } catch (error) {
     console.error(error);
 
@@ -289,7 +297,7 @@ const requestResetPassword = async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ message: "User not found" });
+      return res.json(RESET_OK_RESPONSE);
     }
 
     const user = result.rows[0];
@@ -306,27 +314,31 @@ const requestResetPassword = async (req, res) => {
 
     const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
-    await resend.emails.send({
-      from: "Acme <onboarding@resend.dev>",
-      to: [email],
-      subject: "Reset your password",
-      html: `
+    try {
+      const emailResult = await resend.emails.send({
+        from: "Acme <onboarding@resend.dev>",
+        to: [email],
+        subject: "Reset your password",
+        html: `
     <h2>Password Reset</h2>
     <p>Click the link below to reset your password:</p>
     <a href="${resetLink}">Reset Password</a>
   `,
-    });
+      });
+      if (emailResult?.error) {
+        throw new Error("Email provider rejected the password reset email");
+      }
+    } catch (mailErr) {
+      // Same response either way, so account existence is not revealed.
+      console.error("Failed to send reset email:", mailErr.message);
+    }
 
-    console.log("Email sent successfully!");
-
-    res.json({
-      message: "Reset email sent",
-    });
+    res.json(RESET_OK_RESPONSE);
   } catch (error) {
     console.error(error);
 
     return res.status(500).json({
-      message: "Failed to send email",
+      message: "Failed to process request",
     });
   }
 };
@@ -337,6 +349,11 @@ const resetPassword = async (req, res) => {
 
     if (!token || !newPassword) {
       return res.status(400).json({ message: "Missing data" });
+    }
+
+    const passwordError = getPasswordError(newPassword);
+    if (passwordError) {
+      return res.status(400).json({ message: passwordError });
     }
 
     const result = await db.query(
@@ -355,15 +372,22 @@ const resetPassword = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await db.query(
+    const updateResult = await db.query(
       `UPDATE users
         SET
         password_hash = $1,
         reset_password_token = NULL,
         reset_password_expires = NULL
-        WHERE id = $2`,
-      [hashedPassword, user.id],
+        WHERE id = $2
+          AND reset_password_token = $3
+          AND reset_password_expires > NOW()
+        RETURNING id`,
+      [hashedPassword, user.id, token],
     );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
 
     res.json({ message: "Password updated successfully" });
   } catch (err) {

@@ -3,3 +3,12 @@ node_modules
 dist
 build
 .DS_Store
+backups
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+npm-debug.log*
+.vscode
+coverage

@@ -1,30 +1,36 @@
 function validateProduct(req, res, next) {
-  const { name, description, price, stock, category_id, image } = req.body;
+  const { name, description, price, stock, category_id } = req.body || {};
 
-  if (!name?.trim()) {
+  if (typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "Product name is required." });
   }
 
-  if (!description?.trim()) {
+  if (typeof description !== "string" || !description.trim()) {
     return res.status(400).json({ message: "Description is required." });
   }
 
-  if (price == null || Number(price) <= 0) {
+  const priceNum = typeof price === "string" ? Number(price.trim() || NaN) : Number(price);
+  if (price == null || !Number.isFinite(priceNum) || priceNum <= 0) {
     return res.status(400).json({ message: "Price must be greater than 0." });
   }
 
-  if (stock == null || Number(stock) < 0) {
-    return res.status(400).json({ message: "Stock cannot be negative." });
+  const stockNum = typeof stock === "string" ? Number(stock.trim() || NaN) : Number(stock);
+  if (stock == null || !Number.isInteger(stockNum) || stockNum < 0) {
+    return res
+      .status(400)
+      .json({ message: "Stock must be a non-negative integer." });
   }
 
-  if (!category_id) {
-    return res.status(400).json({ message: "Category is required." });
+  if (
+    category_id != null &&
+    category_id !== "" &&
+    category_id !== "null" &&
+    (!Number.isInteger(Number(category_id)) || Number(category_id) <= 0)
+  ) {
+    return res.status(400).json({ message: "Category is invalid." });
   }
 
-  if (!image?.trim()) {
-    return res.status(400).json({ message: "Image is required." });
-  }
-
+  // Image is optional: uploaded via req.file (multer) when provided.
   next();
 }
 

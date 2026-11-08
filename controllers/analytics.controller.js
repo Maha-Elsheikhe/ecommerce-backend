@@ -16,7 +16,9 @@ const getAnalytics = async (req, res) => {
 
     // 4. Revenue (مهم)
     const revenueResult = await db.query(
-      "SELECT COALESCE(SUM(total_price), 0) AS total FROM orders",
+      `SELECT COALESCE(SUM(total_price), 0) AS total
+       FROM orders
+       WHERE status IN ('paid', 'shipped', 'delivered')`,
     );
     const totalRevenue = Number(revenueResult.rows[0].total);
 

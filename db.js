@@ -23,4 +23,9 @@ const pool = new Pool({
   },
 });
 
+// Idle Neon connections can be dropped; without this handler the process crashes.
+pool.on("error", (err) => {
+  console.error("Unexpected PostgreSQL pool error:", err.message);
+});
+
 module.exports = pool;

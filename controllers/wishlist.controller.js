@@ -5,6 +5,10 @@ const addToWishlist = async (req, res) => {
   const userId = req.user.id;
   const { productId } = req.params;
 
+  if (!Number.isInteger(Number(productId)) || Number(productId) <= 0) {
+    return res.status(400).json({ message: "Invalid product id" });
+  }
+
   try {
     const result = await db.query(
       `INSERT INTO wishlist (user_id, product_id)
@@ -16,7 +20,14 @@ const addToWishlist = async (req, res) => {
 
     res.json(result.rows[0] || { message: "Already in wishlist" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err.code === "23503") {
+      return res.status(404).json({ message: "Product not found" });
+    }
+    if (err.code === "22003") {
+      return res.status(400).json({ message: "Invalid product id" });
+    }
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -44,6 +55,10 @@ const getWishlist = async (req, res) => {
 const removeFromWishlist = async (req, res) => {
   const userId = req.user.id;
   const { productId } = req.params;
+
+  if (!Number.isInteger(Number(productId)) || Number(productId) <= 0) {
+    return res.status(400).json({ message: "Invalid product id" });
+  }
 
   try {
     await db.query(

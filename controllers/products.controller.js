@@ -9,6 +9,10 @@ const getProduct = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!Number.isInteger(Number(id)) || Number(id) <= 0 || Number(id) > 2147483647) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
     const result = await db.query("SELECT * FROM products WHERE id = $1", [id]);
 
     if (result.rows.length === 0) {
@@ -34,6 +38,9 @@ const getProducts = async (req, res) => {
     }
 
     if (category_id) {
+      if (!Number.isInteger(Number(category_id)) || Number(category_id) <= 0 || Number(category_id) > 2147483647) {
+        return res.status(400).json({ error: "Invalid category_id" });
+      }
       values.push(category_id);
       conditions.push(`category_id = $${values.length}`);
     }
@@ -50,8 +57,7 @@ const getProducts = async (req, res) => {
     console.error(err);
 
     res.status(500).json({
-      error: err.message,
-      details: err,
+      error: "Internal server error",
     });
   }
 };
@@ -88,17 +94,23 @@ const addProduct = async (req, res) => {
             return res.status(500).json({ error: error.message });
           }
 
-          const image = result.secure_url;
-          const publicId = result.public_id;
+          try {
+            const image = result.secure_url;
+            const publicId = result.public_id;
 
-          const dbResult = await db.query(
-            `INSERT INTO products (name, description, price, stock, image_url, cloudinary_id, category_id)
+            const dbResult = await db.query(
+              `INSERT INTO products (name, description, price, stock, image_url, cloudinary_id, category_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-            [name, description, price, stock, image, publicId, categoryId],
-          );
+              [name, description, price, stock, image, publicId, categoryId],
+            );
 
-          return res.json(dbResult.rows[0]);
+            return res.json(dbResult.rows[0]);
+          } catch (dbErr) {
+            // Avoid leaving an orphaned image if the insert fails.
+            await cloudinary.uploader.destroy(result.public_id).catch(() => {});
+            return res.status(500).json({ error: dbErr.message });
+          }
         },
       );
 
@@ -112,8 +124,6 @@ const addProduct = async (req, res) => {
         [name, description, price, stock, null, categoryId],
       );
 
-      console.log(result);
-
       return res.json(result.rows[0]);
     }
   } catch (err) {
@@ -124,6 +134,10 @@ const addProduct = async (req, res) => {
 const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!Number.isInteger(Number(id)) || Number(id) <= 0 || Number(id) > 2147483647) {
+      return res.status(404).json({ error: "Product not found" });
+    }
 
     // 1. نجيب المنتج أول
     const productResult = await db.query(
@@ -137,13 +151,24 @@ const deleteProduct = async (req, res) => {
 
     const product = productResult.rows[0];
 
-    // 2. نحذف الصورة من Cloudinary إذا موجودة
-    if (product.cloudinary_id) {
-      await cloudinary.uploader.destroy(product.cloudinary_id);
+    // 2. نحذف من الداتابيز أولاً (قد يفشل إذا كان المنتج داخل طلبات سابقة)
+    try {
+      await db.query("DELETE FROM products WHERE id = $1", [id]);
+    } catch (dbErr) {
+      if (dbErr.code === "23503") {
+        return res.status(409).json({
+          error: "Product is referenced by existing orders and cannot be deleted",
+        });
+      }
+      throw dbErr;
     }
 
-    // 3. نحذف من الداتابيز
-    await db.query("DELETE FROM products WHERE id = $1", [id]);
+    // 3. ثم نحذف الصورة من Cloudinary إذا موجودة
+    if (product.cloudinary_id) {
+      await cloudinary.uploader
+        .destroy(product.cloudinary_id)
+        .catch((e) => console.error("Cloudinary cleanup failed:", e.message));
+    }
 
     res.json({ message: "Product and image deleted successfully" });
   } catch (err) {
@@ -200,28 +225,34 @@ const updateProduct = async (req, res) => {
             return res.status(500).json({ error: error.message });
           }
 
-          if (oldCloudinaryId) {
-            await cloudinary.uploader.destroy(oldCloudinaryId);
-          }
-
-          const resultDb = await db.query(
-            `UPDATE products
+          try {
+            const resultDb = await db.query(
+              `UPDATE products
              SET name=$1, description=$2, price=$3, stock=$4, image_url=$5, cloudinary_id=$6, category_id=$7
              WHERE id=$8
              RETURNING *`,
-            [
-              name,
-              description,
-              price,
-              stock,
-              result.secure_url,
-              result.public_id,
-              categoryId,
-              id,
-            ],
-          );
+              [
+                name,
+                description,
+                price,
+                stock,
+                result.secure_url,
+                result.public_id,
+                categoryId,
+                id,
+              ],
+            );
 
-          return res.json(resultDb.rows[0]);
+            // Remove the old image only after the DB update succeeded.
+            if (oldCloudinaryId) {
+              await cloudinary.uploader.destroy(oldCloudinaryId).catch(() => {});
+            }
+
+            return res.json(resultDb.rows[0]);
+          } catch (dbErr) {
+            await cloudinary.uploader.destroy(result.public_id).catch(() => {});
+            return res.status(500).json({ error: dbErr.message });
+          }
         },
       );
 

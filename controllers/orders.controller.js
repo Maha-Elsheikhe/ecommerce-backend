@@ -1,13 +1,18 @@
 const db = require("../db");
 
 const checkout = async (req, res) => {
-  const client = await db.connect();
-  console.log(req.user.id);
+  let client;
+  let transactionStarted = false;
   try {
+    client = await db.connect();
     const userId = req.user.id;
     const { couponCode } = req.body;
+    if (couponCode !== undefined && (typeof couponCode !== "string" || !couponCode.trim())) {
+      return res.status(400).json({ message: "Coupon code must be a non-empty string" });
+    }
 
     await client.query("BEGIN");
+    transactionStarted = true;
 
     // 1. جلب محتويات السلة
     const cartResult = await client.query(
@@ -18,15 +23,15 @@ const checkout = async (req, res) => {
                 p.price,
                 p.stock
             FROM cart c
-            LEFT JOIN products p
+            JOIN products p
                 ON p.id = c.product_id
             WHERE c.user_id = $1
+            FOR UPDATE OF c, p
             `,
       [userId],
     );
 
     const cartItems = cartResult.rows;
-    console.log("Cart Items:", cartItems);
 
     // 2. التأكد أن السلة ليست فارغة
     if (cartItems.length === 0) {
@@ -59,17 +64,24 @@ const checkout = async (req, res) => {
     FROM coupons
     WHERE code = $1
     `,
-        [couponCode.toUpperCase()],
+        [couponCode.trim().toUpperCase()],
       );
 
       if (couponResult.rows.length > 0) {
         const coupon = couponResult.rows[0];
 
-        if (!coupon.expires_at || new Date(coupon.expires_at) > new Date()) {
-          const discount = (totalPrice * coupon.discount_percent) / 100;
-
-          totalPrice -= discount;
+        if (coupon.expires_at && new Date(coupon.expires_at) <= new Date()) {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+          return res.status(400).json({ message: "Coupon has expired" });
         }
+
+        const discount = (totalPrice * coupon.discount_percent) / 100;
+        totalPrice -= discount;
+      } else {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+        return res.status(400).json({ message: "Invalid coupon code" });
       }
     }
 
@@ -106,14 +118,23 @@ const checkout = async (req, res) => {
       );
 
       // 6. خصم المخزون
-      await client.query(
+      const stockUpdate = await client.query(
         `
                 UPDATE products
                 SET stock = stock - $1
                 WHERE id = $2
+                AND stock >= $1
                 `,
         [item.quantity, item.product_id],
       );
+
+      if (stockUpdate.rowCount === 0) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+        return res.status(400).json({
+          message: `Not enough stock for product ${item.product_id}`,
+        });
+      }
     }
 
     // 7. حذف السلة
@@ -126,13 +147,16 @@ const checkout = async (req, res) => {
     );
 
     await client.query("COMMIT");
+    transactionStarted = false;
 
     res.status(201).json({
       message: "Order created successfully",
       orderId,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
+    if (client && transactionStarted) {
+      await client.query("ROLLBACK");
+    }
 
     console.error(err);
 
@@ -140,7 +164,7 @@ const checkout = async (req, res) => {
       error: err.message,
     });
   } finally {
-    client.release();
+    client?.release();
   }
 };
 
@@ -188,6 +212,10 @@ const getOrderDetails = async (req, res) => {
   try {
     const { id: userId, role } = req.user;
     const { id } = req.params;
+
+    if (!Number.isInteger(Number(id)) || Number(id) <= 0 || Number(id) > 2147483647) {
+      return res.status(404).json({ message: "Order not found" });
+    }
 
     let orderResult;
 

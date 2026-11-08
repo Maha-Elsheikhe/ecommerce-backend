@@ -38,7 +38,15 @@
 
 const { Resend } = require("resend");
 
-// Initialize Resend with your API Key
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-module.exports = resend;
+// Initialize on demand so a missing mail credential does not prevent the API
+// from starting; the calling controller can then handle delivery failure.
+module.exports = {
+  emails: {
+    send(...args) {
+      if (!process.env.RESEND_API_KEY) {
+        throw new Error("RESEND_API_KEY is not configured");
+      }
+      return new Resend(process.env.RESEND_API_KEY).emails.send(...args);
+    },
+  },
+};
